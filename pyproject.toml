@@ -8,7 +8,7 @@ version = "2.0.0"
 description = "CDP eyes + Win32 hands — undetectable browser automation via hardware-level human-like input"
 readme = "README.md"
 license = {text = "MIT"}
-requires-python = ">=3.10"
+requires-python = ">=3.9"
 dependencies = [
     "websockets>=12.0",
     "pydantic>=2.0",
