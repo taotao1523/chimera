@@ -74,37 +74,31 @@ class MCPServer:
     def run(self):
         """Main loop: read JSON-RPC from stdin, write responses to stdout.
 
-        Uses synchronous I/O on the transport layer to avoid Windows
-        asyncio pipe issues (connect_read_pipe is unreliable on Windows).
-        Tool handlers can still be async — they're run via asyncio.run().
+        Reads stdin line-by-line to avoid Windows blocking behavior
+        where sys.stdin.buffer.read(N) waits for N bytes or EOF.
         """
-        # Use binary stdin to avoid encoding issues on Windows
         stdin = sys.stdin.buffer
         stdout = sys.stdout.buffer
 
-        buf = b""
         while True:
-            chunk = stdin.read(65536)
-            if not chunk:
+            line_bytes = stdin.readline()
+            if not line_bytes:
                 break
 
-            buf += chunk
-            while b"\n" in buf:
-                line_bytes, buf = buf.split(b"\n", 1)
-                line = line_bytes.decode("utf-8").strip()
-                if not line:
-                    continue
+            line = line_bytes.decode("utf-8").strip()
+            if not line:
+                continue
 
-                try:
-                    request = MCPRequest(**json.loads(line))
-                except Exception:
-                    continue
+            try:
+                request = MCPRequest(**json.loads(line))
+            except Exception:
+                continue
 
-                response = self._run_handler(request)
-                if response is not None:
-                    resp_json = json.dumps(response.__dict__, default=str, ensure_ascii=False)
-                    stdout.write((resp_json + "\n").encode("utf-8"))
-                    stdout.flush()
+            response = self._run_handler(request)
+            if response is not None:
+                resp_json = json.dumps(response.__dict__, default=str, ensure_ascii=False)
+                stdout.write((resp_json + "\n").encode("utf-8"))
+                stdout.flush()
 
     @staticmethod
     def _respond(req_id, result=None, error=None):
