@@ -1,0 +1,9 @@
+{
+  "mcpServers": {
+    "chimera": {
+      "command": "python",
+      "args": ["-m", "chimera.mcp_server"],
+      "cwd": "D:\\codex\\chimera"
+    }
+  }
+}

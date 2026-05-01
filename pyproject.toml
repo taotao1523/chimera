@@ -16,6 +16,7 @@ dependencies = [
 
 [project.scripts]
 chimera = "chimera.cli:main"
+chimera-mcp = "chimera.mcp_server:main"
 
 [project.optional-dependencies]
 dev = ["pytest", "pytest-asyncio", "ruff"]
