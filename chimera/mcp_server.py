@@ -71,46 +71,65 @@ class MCPServer:
 
         return wrapper
 
-    async def run(self):
-        """Main loop: read JSON-RPC from stdin, write responses to stdout."""
-        reader = asyncio.StreamReader()
-        protocol = asyncio.StreamReaderProtocol(reader)
-        await asyncio.get_event_loop().connect_read_pipe(lambda: protocol, sys.stdin)
+    def run(self):
+        """Main loop: read JSON-RPC from stdin, write responses to stdout.
 
-        writer = asyncio.StreamWriter(sys.stdout.buffer, None, None, asyncio.get_event_loop())  # type: ignore
+        Uses synchronous I/O on the transport layer to avoid Windows
+        asyncio pipe issues (connect_read_pipe is unreliable on Windows).
+        Tool handlers can still be async — they're run via asyncio.run().
+        """
+        # Use binary stdin to avoid encoding issues on Windows
+        stdin = sys.stdin.buffer
+        stdout = sys.stdout.buffer
 
-        buf = ""
+        buf = b""
         while True:
-            chunk = await reader.read(65536)
+            chunk = stdin.read(65536)
             if not chunk:
                 break
 
-            buf += chunk.decode("utf-8")
-            while "\n" in buf:
-                line, buf = buf.split("\n", 1)
-                line = line.strip()
+            buf += chunk
+            while b"\n" in buf:
+                line_bytes, buf = buf.split(b"\n", 1)
+                line = line_bytes.decode("utf-8").strip()
                 if not line:
                     continue
+
                 try:
                     request = MCPRequest(**json.loads(line))
                 except Exception:
                     continue
 
-                response = await self._handle(request)
+                response = self._run_handler(request)
                 if response is not None:
                     resp_json = json.dumps(response.__dict__, default=str, ensure_ascii=False)
-                    writer.write((resp_json + "\n").encode("utf-8"))
-                    await writer.drain()
+                    stdout.write((resp_json + "\n").encode("utf-8"))
+                    stdout.flush()
 
-    def _respond(self, req_id, result=None, error=None):
+    @staticmethod
+    def _respond(req_id, result=None, error=None):
+        """Build a JSON-RPC response."""
         if req_id is None:
-            return None  # notification, no response
+            return None
         err_dict = None
         if error:
             err_dict = {"code": -32000, "message": str(error)}
         return MCPResponse(id=req_id, result=result, error=err_dict)
 
-    async def _handle(self, req: MCPRequest) -> MCPResponse | None:
+    def _run_handler(self, req: MCPRequest) -> MCPResponse | None:
+        """Run a handler, wrapping async handlers in asyncio.run()."""
+        try:
+            import asyncio as _asyncio
+
+            result = self._handle_sync(req)
+            if _asyncio.iscoroutine(result):
+                result = _asyncio.run(result)
+            return result
+        except Exception as e:
+            traceback.print_exc(file=sys.stderr)
+            return self._respond(req.id, error=str(e))
+
+    async def _handle_sync(self, req: MCPRequest) -> MCPResponse | None:
         method = req.method
         params = req.params or {}
 
@@ -394,7 +413,7 @@ async def chimera_close() -> str:
 
 def main():
     """Run the Chimera MCP server."""
-    asyncio.run(_server.run())
+    _server.run()
 
 
 if __name__ == "__main__":
